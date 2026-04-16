@@ -1,0 +1,9 @@
+# binaries
+cmd/tls-fingerprint-echo/tls-fingerprint-echo
+e2e/tls-fingerprint-echo-test
+
+# environment
+.env
+
+# macOS
+.DS_Store
