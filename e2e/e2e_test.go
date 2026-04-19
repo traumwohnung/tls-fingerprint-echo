@@ -14,7 +14,6 @@ import (
 	"github.com/sardanioss/httpcloak"
 )
 
-// serverResponse mirrors the JSON shape returned by the server.
 type serverResponse struct {
 	RemoteAddr  string `json:"remote_addr"`
 	UserAgent   string `json:"user_agent"`
@@ -23,21 +22,10 @@ type serverResponse struct {
 		JA3Raw  string `json:"ja3_raw"`
 		JA4     string `json:"ja4"`
 	} `json:"fingerprint"`
-	Verdict struct {
-		Level              string   `json:"level"`
-		Score              float64  `json:"score"`
-		Reasons            []string `json:"reasons"`
-		UAMatches          []string `json:"ua_matches"`
-		FingerprintMatches []string `json:"fingerprint_matches"`
-	} `json:"verdict"`
-	HTTPCloakPresetMatches []struct {
-		Name      string `json:"name"`
-		UserAgent string `json:"user_agent"`
-	} `json:"httpcloak_preset_matches"`
+	UAConsistent bool `json:"ua_consistent"`
 }
 
 func TestMain(m *testing.M) {
-	// Build the server binary once before all tests.
 	build := exec.Command("go", "build", "-o", "tls-fingerprint-echo-test", "tls-fingerprint-echo/cmd/tls-fingerprint-echo")
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
@@ -50,8 +38,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// startServer launches the binary on a free port and waits until it accepts
-// connections. It returns the base URL and a cancel func that stops the server.
 func startServer(t *testing.T) (baseURL string, stop func()) {
 	t.Helper()
 
@@ -144,47 +130,15 @@ func TestFingerprintIsPresent(t *testing.T) {
 	}
 }
 
-func TestVerdictConsistentForMatchingPresets(t *testing.T) {
+func TestUAConsistent(t *testing.T) {
 	url, stop := startServer(t)
 	defer stop()
 
-	// These presets use real browser TLS stacks; the server should see a
-	// consistent verdict when the User-Agent and fingerprint agree.
 	for _, preset := range []string{"chrome-latest", "firefox-latest", "safari-latest"} {
 		t.Run(preset, func(t *testing.T) {
 			sr := request(t, url, preset)
-
-			if sr.Verdict.Level != "consistent" && sr.Verdict.Level != "suspicious" {
-				t.Errorf("preset %s: unexpected verdict level %q", preset, sr.Verdict.Level)
-			}
-			if sr.Verdict.Score <= 0 {
-				t.Errorf("preset %s: verdict score should be > 0, got %f", preset, sr.Verdict.Score)
-			}
-		})
-	}
-}
-
-func TestHTTPCloakPresetMatchesConsistentWithFingerprintMatches(t *testing.T) {
-	url, stop := startServer(t)
-	defer stop()
-
-	for _, preset := range []string{"chrome-latest", "safari-latest", "firefox-latest"} {
-		t.Run(preset, func(t *testing.T) {
-			sr := request(t, url, preset)
-
-			// All entries must be well-formed.
-			for _, m := range sr.HTTPCloakPresetMatches {
-				if m.Name == "" || m.UserAgent == "" {
-					t.Errorf("preset match has empty fields: %+v", m)
-				}
-			}
-
-			// preset_matches must be non-empty iff fingerprint_matches is non-empty.
-			if len(sr.Verdict.FingerprintMatches) > 0 && len(sr.HTTPCloakPresetMatches) == 0 {
-				t.Errorf("fingerprint_matches=%v but httpcloak_preset_matches is empty", sr.Verdict.FingerprintMatches)
-			}
-			if len(sr.Verdict.FingerprintMatches) == 0 && len(sr.HTTPCloakPresetMatches) > 0 {
-				t.Errorf("fingerprint_matches is empty but httpcloak_preset_matches=%v", sr.HTTPCloakPresetMatches)
+			if !sr.UAConsistent {
+				t.Errorf("expected ua_consistent=true for preset %s (ua=%q)", preset, sr.UserAgent)
 			}
 		})
 	}

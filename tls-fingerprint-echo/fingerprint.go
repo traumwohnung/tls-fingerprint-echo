@@ -3,13 +3,25 @@ package echo
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
-	"github.com/Easonliuliang/helloprint/database"
-	"github.com/Easonliuliang/helloprint/match"
 	"github.com/psanford/tlsfingerprint/httpfingerprint"
+	"github.com/ua-parser/uap-go/uaparser"
 )
 
-var db = database.Default()
+var uaParser = uaparser.NewFromSaved()
+
+// knownBrowserFamilies is the set of browser families considered "real browsers".
+var knownBrowserFamilies = map[string]bool{
+	"chrome":         true,
+	"chrome mobile":  true,
+	"chromium":       true,
+	"firefox":        true,
+	"firefox mobile": true,
+	"safari":         true,
+	"mobile safari":  true,
+	"edge":           true,
+}
 
 type TLSFingerprint struct {
 	JA3Hash string `json:"ja3_hash"`
@@ -17,20 +29,11 @@ type TLSFingerprint struct {
 	JA4     string `json:"ja4"`
 }
 
-type TLSVerdict struct {
-	Level              string   `json:"level"`
-	Score              float64  `json:"score"`
-	Reasons            []string `json:"reasons"`
-	UAMatches          []string `json:"ua_matches"`
-	FingerprintMatches []string `json:"fingerprint_matches"`
-}
-
 type Response struct {
-	RemoteAddr             string         `json:"remote_addr"`
-	UserAgent              string         `json:"user_agent"`
-	Fingerprint            TLSFingerprint `json:"fingerprint"`
-	Verdict                TLSVerdict     `json:"verdict"`
-	HTTPCloakPresetMatches []PresetMatch  `json:"httpcloak_preset_matches"`
+	RemoteAddr   string         `json:"remote_addr"`
+	UserAgent    string         `json:"user_agent"`
+	Fingerprint  TLSFingerprint `json:"fingerprint"`
+	UAConsistent bool           `json:"ua_consistent"`
 }
 
 func ExtractFingerprint(r *http.Request) Response {
@@ -47,15 +50,10 @@ func ExtractFingerprint(r *http.Request) Response {
 		}
 	}
 
-	v := match.CheckConsistency(resp.UserAgent, resp.Fingerprint.JA3Hash, resp.Fingerprint.JA4, db)
-	resp.Verdict = TLSVerdict{
-		Level:              string(v.Level),
-		Score:              v.Score,
-		Reasons:            v.Reasons,
-		UAMatches:          v.UAMatches,
-		FingerprintMatches: v.FingerprintMatches,
-	}
-	resp.HTTPCloakPresetMatches = MatchingPresets(v.FingerprintMatches)
+	// UAConsistent is true when the User-Agent parses to a known browser family.
+	parsed := uaParser.Parse(resp.UserAgent)
+	family := strings.ToLower(parsed.UserAgent.Family)
+	resp.UAConsistent = knownBrowserFamilies[family]
 
 	return resp
 }
