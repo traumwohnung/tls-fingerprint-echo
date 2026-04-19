@@ -30,10 +30,11 @@ type TLSFingerprint struct {
 }
 
 type Response struct {
-	RemoteAddr   string         `json:"remote_addr"`
-	UserAgent    string         `json:"user_agent"`
-	Fingerprint  TLSFingerprint `json:"fingerprint"`
-	UAConsistent bool           `json:"ua_consistent"`
+	RemoteAddr             string         `json:"remote_addr"`
+	UserAgent              string         `json:"user_agent"`
+	Fingerprint            TLSFingerprint `json:"fingerprint"`
+	UAConsistent           bool           `json:"ua_consistent"`
+	HTTPCloakPresetMatches []PresetMatch  `json:"httpcloak_preset_matches"`
 }
 
 func ExtractFingerprint(r *http.Request) Response {
@@ -54,6 +55,7 @@ func ExtractFingerprint(r *http.Request) Response {
 	parsed := uaParser.Parse(resp.UserAgent)
 	family := strings.ToLower(parsed.UserAgent.Family)
 	resp.UAConsistent = knownBrowserFamilies[family]
+	resp.HTTPCloakPresetMatches = MatchingPresets(resp.UserAgent)
 
 	return resp
 }
